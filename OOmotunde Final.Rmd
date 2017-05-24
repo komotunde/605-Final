@@ -1,0 +1,248 @@
+---
+title: "IS 605 Final Exam"
+author: "Oluwakemi Omotunde"
+date: "May 15, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Pick **one** of the quantitative independent variables from the training data set (train.csv) , and define that variable as  X.   Pick **SalePrice** as the dependent variable, and define it as Y for the next analysis. 
+
+```{r load train data}
+train.data <- read.csv("https://raw.githubusercontent.com/komotunde/DATA605/master/train.csv", header  = TRUE)
+head(train.data)
+
+#I will go ahead and use Sale Price as my dependent variable, as requested so it'll be my Y. For my X variable (independent), I will use Total Basement Square Footage.
+
+X <- train.data$TotalBsmtSF
+Y <- train.data$SalePrice
+```
+
+*Probability*.   Calculate as a minimum the below probabilities a through c.  Assume the small letter "x" is estimated as the 4th quartile of the X variable, and the small letter "y" is estimated as the 2nd quartile of the Y variable.  Interpret the meaning of all probabilities.  
+
+a. P(X > x |Y > y) = .4519231
+
+```{r PROB. A}
+require(dplyr)
+x <- quantile(X, .75) #x is the estimated 4th quartile of X
+y <- quantile(Y, .5) #y is the estimated 2nd quartile of Y 
+
+num <- filter(train.data, SalePrice > y & TotalBsmtSF > x) %>% tally()/nrow(train.data)
+den <- filter(train.data, SalePrice > y) %>% tally()/nrow(train.data)
+p1 <- num/den
+p1 
+```
+Below is how I arrived at the above code. 
+
+$$P(X > x |Y > y) = P(X > .75 |Y > .50)$$
+  $$P(A|B) = P(B and A)/P(B)$$
+b.  P(X>x, Y>y)	= 0.1246575
+
+```{r PROB B}
+num.b <- filter(train.data, TotalBsmtSF > x) %>% tally()/nrow(train.data)
+den.b <- filter(train.data, SalePrice > y) %>% tally()/nrow(train.data)
+p2 <- num.b * den.b
+p2
+```
+
+c.  P(X<x | Y>y) = 0.5480769
+
+```{r PROB C}
+num.c <- filter(train.data, SalePrice > y & TotalBsmtSF < x) %>% tally()/nrow(train.data)
+den.c <- filter(train.data, SalePrice > y) %>% tally()/nrow(train.data)
+p3 <- num.c/den.c
+p3
+```
+
+Does splitting the training data in this fashion make them independent? In other words, does P(X|Y)=P(X)P(Y))? Check mathematically, and then evaluate by running a Chi Square test for association. You might have to research this.  
+
+```{r check independence mathematically}
+
+filter(train.data, SalePrice <= y & TotalBsmtSF <=x) %>% tally() #696
+filter(train.data, SalePrice > y & TotalBsmtSF <=x) %>% tally() #399
+filter(train.data, TotalBsmtSF <=x) %>% tally() #1095
+
+
+filter(train.data, SalePrice <= y & TotalBsmtSF > x) %>% tally() #36
+filter(train.data, SalePrice > y & TotalBsmtSF > x) %>% tally() #329
+filter(train.data, TotalBsmtSF > x) %>% tally()#365
+
+filter(train.data, SalePrice <= y) %>% tally() #732
+filter(train.data, SalePrice > y) %>% tally() #728
+nrow(train.data)#1460
+
+
+P.A = 365/1460  #.25
+P.A
+
+P.B = 728/1460 #.5
+P.B
+
+P.AB = P.A * P.B
+P.AB
+
+#P(X > x |Y > y) = .4519231
+
+#We can see mathematically that these two variables are dependent.
+```
+
+It does not appear that splitting up the data makes them independent. We will perform th Chi Square test to verify our mathematical findings
+
+```{r chi}
+chi.test <- table(train.data$SalePrice, train.data$TotalBsmtSF)
+#now we will do the chi test to find our signifance level
+
+chisq.test(chi.test)
+
+#Since our p-value is significantly less than .05, we can reject the null hypothesis stating that X and Y are independent. That is to say that there is dependence between the Sale Price and the Total Basement Square Foot.
+```
+
+*Descriptive and Inferential Statistics.* Provide univariate descriptive statistics and appropriate plots for both variables(SalePrice and TotalBsmtSF).
+* **TotalBsmtSF:** Total square feet of basement area
+* **SalePrice:** Price house sold for
+  + I assumed on this description as it was not on the data description list. 
+```{r des. stats, plot}
+require(ggplot2)
+summary(train.data$SalePrice)
+summary(train.data$TotalBsmtSF)
+
+
+ggplot(data=train.data, aes(SalePrice)) + geom_histogram(binwidth = 1000) 
+#This plot looks slightly skewed to the right.
+
+ggplot(data=train.data, aes(TotalBsmtSF)) + geom_histogram(binwidth = 100) 
+
+#This plot also looks slightly skewed to the right.
+```  
+Provide a scatterplot of X and Y.
+```{r scatterplot}
+ggplot(train.data, aes(x = TotalBsmtSF, y = SalePrice)) + geom_point(shape = 1) + geom_smooth(method = lm) + labs(x = "Basement Total Sq. Footage", y = "Total Sale Price", title = "Basement Square Footage vs. Sale Price")
+
+#I used geom_smooth to add a linear regression line which is by default a 95% confidence interval region
+```
+Transform both variables simultaneously using Box-Cox transformations.You might have to research this.
+
+```{r box cox}
+#I found a lot of useful information on the following website:  http://rstudio-pubs-static.s3.amazonaws.com/63893_9f6bc9cd73ad47aab3aa85d0193244d9.html
+
+require(MASS)
+bc <- lm(train.data$SalePrice ~ train.data$TotalBsmtSF)
+trans <- boxcox(bc, lambda=seq(-2,2,.1), plotit = FALSE, interp = TRUE)
+trans.test.data <- as.data.frame(trans)
+lamda <- trans.test.data[which.max(trans$y),1]
+lamda #0.02020202
+new.data <- cbind(X, Y, train.data$SalePrice^lamda, train.data$TotalBsmtSF^lamda)
+colnames(new.data) <- c("TotalBsmtSF", "SalePrice", "Trans.SalePrice", "Trans.TB")
+head(new.data)
+```
+
+Using the transformed variables, run a correlation analysis and interpret. Test the hypothesis that the correlation between these variables is 0 and provide a 99% confidence interval.Discuss the meaning of your analysis.
+
+```{r correlation analysis}
+#For some odd reason, it was not easy for me to subset the data frame for just the columns I need. I used this site for assistance: https://stackoverflow.com/questions/10085806/extracting-specific-columns-from-a-data-frame
+
+trans.data <- new.data[,c("Trans.SalePrice", "Trans.TB")]
+head(trans.data)
+
+require(corrplot)
+require(stats)
+corr. <- cor(trans.data)
+corrplot(corr., method = "ellipse")
+corrplot(corr., method = "number")
+
+#https://cran.r-project.org/web/packages/corrplot/vignettes/corrplot-intro.html
+TSP <- new.data[,"Trans.SalePrice"]
+TTB <- new.data[,"Trans.TB"]
+TBSF <- new.data[,"TotalBsmtSF"]
+SP <- new.data[,"SalePrice"]
+
+c.test <- cor.test(TSP,TTB,  method = "pearson", conf.level = .99)
+c.test
+#https://stat.ethz.ch/R-manual/R-devel/library/stats/html/cor.test.html
+```
+
+From both the numerical and ellipse correlation plot, we see that there is a correlation betweeen the two variables. The confidence interval is [0.1607066, 0.2886342]. From this, we reject our null hypothesis, which we proved is incorrect when we showed that there is a strong correlation between Total Basement SF and Total Sale Price. 
+
+```{r matrix}
+prec <- solve(corr.)
+
+ans <- corr. * prec
+ans2 <- prec * corr.
+
+ans
+ans2
+```
+
+Many times, it makes sense to fit a closed form distribution to data.  For your non-transformed independent variable, location shift it so that the minimum value is above zero.  Then load the MASS package and run fitdistr to fit a density function of your choice.  (See  https://stat.ethz.ch/R-manual/R-devel/library/MASS/html/fitdistr.html ).  Find the optimal value of the parameters for this distribution, and then take 1000 samples from this distribution (e.g., rexp(1000, ???) for an exponential).  Plot a histogram and compare it with a histogram of your non-transformed original variable. 
+
+```{r remove zeros}
+min(train.data$TotalBsmtSF)
+
+fit.data <- cbind(SP, TBSF)
+zero_sub = apply(fit.data, 1, function(row) all(row !=0 ))
+
+FD <- fit.data[zero_sub,]
+FD
+min(FD)
+```
+
+I removed the 0's from both the independent and dependent variable as I could not figure out how to remove from just one.
+
+```{r fit}
+require(MASS)
+F.TBSF <- FD[,"TBSF"]
+dist <- fitdistr(F.TBSF, "normal")
+opt.lamda <- dist$estimate
+samp <- rexp(1200, opt.lamda)
+hist(samp, breaks = 25)
+```
+The two histograms look quite different. This second histogram is more right skewed, and although our initial one was right skewed as well, it was not to the degree of this one. 
+
+
+Build some type of regression model and submit your model to the competition board.  Provide your complete model summary and results with analysis.  Report your Kaggle.com  user name and score.
+
+
+```{r modeling}
+#I would like to preface this by saying that I decided on the multiple regression model as it was the most straightforward and easy for me to handle. 
+
+model <- lm(formula = train.data$SalePrice ~ train.data$OverallQual + train.data$GrLivArea + train.data$TotalBsmtSF + train.data$GarageArea, data=train.data)
+summary(model) 
+```
+
+From the summary of the linear model done, we can say our equation is: 
+
+$$SalePrice = -98436.050 + (26988.854*OverallQuality) + (49.573*GrLivArea) + (11317.522*GarageCars) + (  30.126*TotalBsmtSF) + (58.246*GarageArea)$$
+I would like to check my equation by checking on the test data. I will load and compare my calculated SalePrice with the one provided in the test data. 
+
+```{r check}
+test.data <- read.csv("https://raw.githubusercontent.com/komotunde/DATA605/master/test.csv", header  = TRUE)
+head(test.data)
+
+test.subset <- test.data[,c("Id", "OverallQual", "GrLivArea", "GarageCars", "TotalBsmtSF", "GarageArea")]
+head(test.subset)
+#I will find the sale price from the above equation and combine with our test subset data frame.
+
+test.subset[is.na(test.subset)] <- 0
+
+SalePrice <- (-98436.050 + (26988.854*test.subset$OverallQual) + (49.573*test.subset$GrLivArea) + (11317.522*test.subset$GarageCars) + (  30.126*test.subset$TotalBsmtSF) + (58.246*test.subset$GarageArea))
+head(Sale.Price)
+
+require(knitr)
+new.df <- cbind(test.subset, SalePrice)
+kable(new.df)
+
+write.csv(new.df, file = "kagglesubmission.csv")
+
+#When I tried to submit the first time, I realized that my file was not in the proper format so I have to come make some changes
+
+sub.df <- new.df[,c("Id", "SalePrice")]
+kable(sub.df)
+
+
+write.csv(sub.df, file = "kagglesubmission2.csv", quote=FALSE, row.names=FALSE)
+```
+
